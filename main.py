@@ -1,127 +1,61 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
+import streamlit as st
+from datetime import datetime
+from sqlalchemy import Column, Integer, String, Date, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from io import BytesIO
-from fpdf import FPDF
 import qrcode
-import logging
-from datetime import date
+import os
+from fpdf import FPDF
+from PIL import Image
+import base64
 
-# Configuração da aplicação
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'sua_chave_secreta'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///banco.db'
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
+# Configurações do banco de dados
+Base = declarative_base()
+engine = create_engine("sqlite:///banco.db")
+Session = sessionmaker(bind=engine)
 
-# MODELOS
-class Usuario(db.Model, UserMixin):
-    id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(150), nullable=False)
-    email = db.Column(db.String(150), unique=True, nullable=False)
-    senha = db.Column(db.String(150), nullable=False)
-    tipo = db.Column(db.String(50), nullable=False)
-    carteirinhas = db.relationship('Carteirinha', backref='usuario_relacionado', lazy=True)
+def get_session():
+    return Session()
 
-    @property
-    def is_active(self):
-        return True
+# Modelo de dados
+class Carteirinha(Base):
+    __tablename__ = "carteirinhas"
+    id = Column(Integer, primary_key=True)
+    nome = Column(String)
+    matricula = Column(String)
+    curso = Column(String)
+    cpf = Column(String)
+    data_nascimento = Column(Date)
+    dias_aula = Column(String)
+    validade = Column(String)
+    foto = Column(String)
+    assinatura_secretario = Column(String)
+    logo_prefeitura = Column(String)
+    logo_secretaria = Column(String)
+    imagem_gerada = Column(String)
+    nome_secretario = Column(String)
 
+def init_db():
+    Base.metadata.create_all(engine)
 
-class Carteirinha(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    nome = db.Column(db.String(100), nullable=False)
-    matricula = db.Column(db.String(20), nullable=False)
-    curso = db.Column(db.String(100), nullable=True)
-    cpf = db.Column(db.String(14), nullable=True)
-    data_nascimento = db.Column(db.Date, nullable=True)
-    dias_aula = db.Column(db.String(255), nullable=True)
-    validade = db.Column(db.String(50), nullable=True)
-    foto = db.Column(db.String(120), nullable=False)
-    assinatura_secretario = db.Column(db.String(120), nullable=False)
-    logo_prefeitura = db.Column(db.String(120), nullable=False)
-    logo_secretaria = db.Column(db.String(120), nullable=False)
-    imagem_gerada = db.Column(db.String(120), nullable=True)
-    nome_secretario = db.Column(db.String(100), nullable=False)
-    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id', ondelete='CASCADE'), nullable=False)
+# Funções auxiliares
+def salvar_arquivo(uploaded_file, pasta="static"):
+    if not os.path.exists(pasta):
+        os.makedirs(pasta)
+    caminho = os.path.join(pasta, uploaded_file.name)
+    with open(caminho, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    return caminho
 
-    def __repr__(self):
-        return f'<Carteirinha {self.nome}>'
+def gerar_qr_code(link):
+    qr = qrcode.make(link)
+    buffer = BytesIO()
+    qr.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
 
-
-@login_manager.user_loader
-def load_user(user_id):
-    return Usuario.query.get(int(user_id))
-
-
-# ROTAS
-@app.route("/login", methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        senha = request.form['senha']
-        usuario = Usuario.query.filter_by(email=email, senha=senha).first()
-        if usuario:
-            login_user(usuario)
-            return redirect(url_for('dashboard'))
-        flash('Credenciais inválidas')
-    return render_template("login.html")
-
-
-@app.route("/logout")
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
-
-
-@app.route("/dashboard")
-@login_required
-def dashboard():
-    return render_template("dashboard.html")
-
-
-@app.route("/alterar_senha", methods=['GET', 'POST'])
-@login_required
-def alterar_senha():
-    if request.method == 'POST':
-        nova_senha = request.form['nova_senha']
-        current_user.senha = nova_senha
-        db.session.commit()
-        flash('Senha alterada com sucesso!')
-        return redirect(url_for('dashboard'))
-    return render_template("alterar_senha.html")
-
-
-@app.route("/promover/<int:id>")
-@login_required
-def promover_usuario(id):
-    if current_user.tipo != 'admin':
-        return redirect(url_for('dashboard'))
-    usuario = Usuario.query.get_or_404(id)
-    usuario.tipo = 'admin'
-    db.session.commit()
-    flash(f'Usuário {usuario.nome} promovido a administrador.')
-    return redirect(url_for('dashboard'))
-
-
-@app.route("/gerar_qr/<int:carteirinha_id>")
-def gerar_qr(carteirinha_id):
-    carteirinha = Carteirinha.query.get_or_404(carteirinha_id)
-    qr_data = url_for('visualizar', id=carteirinha.id, _external=True)
-    qr_code = qrcode.make(qr_data)
-    img_io = BytesIO()
-    qr_code.save(img_io, 'PNG')
-    img_io.seek(0)
-    return send_file(img_io, mimetype='image/png')
-
-
-@app.route("/gerar_pdf/<int:id>")
-def gerar_pdf(id):
-    carteirinha = Carteirinha.query.get_or_404(id)
+def exportar_pdf(carteirinha):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -130,97 +64,98 @@ def gerar_pdf(id):
     pdf.cell(200, 10, txt="Curso: " + carteirinha.curso, ln=True)
     pdf.cell(200, 10, txt="Data de Nascimento: " + str(carteirinha.data_nascimento), ln=True)
     pdf.cell(200, 10, txt="Validade: " + str(carteirinha.validade), ln=True)
-    pdf_output = BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
-    return send_file(pdf_output, as_attachment=True, download_name=f"carteirinha_{id}.pdf", mimetype="application/pdf")
+    pdf_buffer = BytesIO()
+    pdf.output(pdf_buffer)
+    pdf_buffer.seek(0)
+    return pdf_buffer
 
+# Inicia banco
+init_db()
 
-@app.route("/painel")
-@login_required
-def painel():
-    carteirinhas = Carteirinha.query.all()
-    usuarios = Usuario.query.all()
-    return render_template("painel.html", carteirinhas=carteirinhas, usuarios=usuarios)
+# Interface Streamlit
+st.set_page_config("Carteirinhas Estudantis", layout="wide")
+st.title("Sistema de Carteirinhas")
 
+# Menu lateral
+menu = st.sidebar.radio("Menu", ["Início", "Nova Carteirinha", "Gerenciar Carteirinhas"])
 
-@app.route("/criar_carteirinha", methods=['POST'])
-def criar_carteirinha():
-    carteirinha = Carteirinha(
-        nome='Nome do Aluno',
-        matricula='1234',
-        foto='caminho/foto.jpg',
-        assinatura_secretario='caminho/assinatura.png',
-        logo_prefeitura='caminho/logo1.png',
-        logo_secretaria='caminho/logo2.png',
-        nome_secretario='Secretário X',
-        validade='12/2025',
-        usuario_id=1
-    )
-    db.session.add(carteirinha)
-    db.session.commit()
-    return redirect(url_for('visualizar_carteirinha', id=carteirinha.id))
+# Página Inicial
+if menu == "Início":
+    st.subheader("Bem-vindo!")
+    st.write("Use o menu à esquerda para navegar.")
 
+# Criar carteirinha
+elif menu == "Nova Carteirinha":
+    st.subheader("Criar Nova Carteirinha")
+    with st.form("form_carteirinha"):
+        nome = st.text_input("Nome do Aluno")
+        matricula = st.text_input("Matrícula")
+        curso = st.text_input("Curso")
+        cpf = st.text_input("CPF")
+        data_nascimento = st.date_input("Data de Nascimento")
+        dias_aula = st.text_input("Dias de Aula")
+        validade = st.text_input("Validade")
 
-@app.route("/excluir_carteirinha/<int:id>", methods=['POST'])
-@login_required
-def excluir_carteirinha(id):
-    carteirinha = Carteirinha.query.get_or_404(id)
-    db.session.delete(carteirinha)
-    db.session.commit()
-    flash('Carteirinha excluída com sucesso!', 'success')
-    return redirect(url_for('dashboard'))
+        foto = st.file_uploader("Foto do Aluno", type=["png", "jpg", "jpeg"])
+        assinatura = st.file_uploader("Assinatura do Secretário", type=["png"])
+        logo_prefeitura = st.file_uploader("Logo da Prefeitura", type=["png"])
+        logo_secretaria = st.file_uploader("Logo da Secretaria", type=["png"])
+        nome_secretario = st.text_input("Nome do Secretário")
 
+        enviado = st.form_submit_button("Salvar")
+    
+    if enviado:
+        session = get_session()
+        nova = Carteirinha(
+            nome=nome,
+            matricula=matricula,
+            curso=curso,
+            cpf=cpf,
+            data_nascimento=data_nascimento,
+            dias_aula=dias_aula,
+            validade=validade,
+            foto=salvar_arquivo(foto) if foto else "",
+            assinatura_secretario=salvar_arquivo(assinatura) if assinatura else "",
+            logo_prefeitura=salvar_arquivo(logo_prefeitura) if logo_prefeitura else "",
+            logo_secretaria=salvar_arquivo(logo_secretaria) if logo_secretaria else "",
+            nome_secretario=nome_secretario,
+            imagem_gerada="",  # pode gerar depois
+        )
+        session.add(nova)
+        session.commit()
+        st.success("Carteirinha criada com sucesso!")
 
-@app.route('/editar_usuario/<int:id>', methods=['GET', 'POST'])
-@login_required
-def editar_usuario(id):
-    usuario = Usuario.query.get_or_404(id)
-    if request.method == 'POST':
-        usuario.nome = request.form['nome']
-        usuario.email = request.form['email']
-        db.session.commit()
-        flash('Usuário atualizado com sucesso!')
-        return redirect(url_for('dashboard'))
-    return render_template('editar_usuario.html', usuario=usuario)
+# Listar/gerenciar carteirinhas
+elif menu == "Gerenciar Carteirinhas":
+    st.subheader("Carteirinhas Cadastradas")
+    session = get_session()
+    carteirinhas = session.query(Carteirinha).all()
 
+    for c in carteirinhas:
+        with st.expander(f"{c.nome} - {c.matricula}"):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.write(f"**Curso:** {c.curso}")
+                st.write(f"**Nascimento:** {c.data_nascimento}")
+                st.write(f"**Validade:** {c.validade}")
+                st.write(f"**Dias de Aula:** {c.dias_aula}")
+                st.write(f"**Secretário:** {c.nome_secretario}")
+            with col2:
+                if c.foto and os.path.exists(c.foto):
+                    st.image(c.foto, width=100)
 
-@app.route('/excluir_usuario/<int:id>', methods=['POST'])
-@login_required
-def excluir_usuario(id):
-    usuario = Usuario.query.get_or_404(id)
-    db.session.delete(usuario)
-    db.session.commit()
-    flash('Usuário excluído com sucesso!')
-    return redirect(url_for('dashboard'))
+            st.markdown("---")
 
+            col3, col4, col5 = st.columns(3)
 
-@app.route("/visualizar_carteirinha/<int:id>")
-@login_required
-def visualizar_carteirinha(id):
-    carteirinha = Carteirinha.query.get_or_404(id)
-    return render_template("visualizar_carteirinha.html", carteirinha=carteirinha)
+            with col3:
+                st.download_button("Baixar PDF", exportar_pdf(c), file_name=f"carteirinha_{c.id}.pdf")
 
+            with col4:
+                link_carteirinha = f"http://localhost:8501/?id={c.id}"
+                qr = gerar_qr_code(link_carteirinha)
+                st.download_button("QR Code", qr, file_name="qr.png")
 
-# CRIAÇÃO AUTOMÁTICA DO ADMINISTRADOR
-def create_admin_user():
-    with app.app_context():
-        if not Usuario.query.filter_by(email='admin@admin.com').first():
-            admin = Usuario(
-                nome='Admin',
-                email='admin@admin.com',
-                senha='admin',  # Ideal: gerar hash!
-                tipo='admin'
-            )
-            db.session.add(admin)
-            db.session.commit()
-            print("Usuário administrador criado.")
-        else:
-            print("Usuário administrador já existe.")
-
-
-# INICIAR APLICAÇÃO
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    create_admin_user()
-    app.run(debug=True)
+            with col5:
+                whatsapp_link = f"https://api.whatsapp.com/send?text=Confira%20sua%20carteirinha:%20{link_carteirinha}"
+                st.markdown(f"[Enviar por WhatsApp]({whatsapp_link})")
