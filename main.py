@@ -2,6 +2,10 @@ from app import create_app, db
 from app.models import Usuario
 import logging
 from app import create_app
+from flask_migrate import Migrate
+from main import app, db  # importa o app e o db corretamente
+
+migrate = Migrate(app, db)
 
 # Configuração do aplicativo
 app = create_app()
@@ -31,3 +35,4 @@ def create_admin_user():
 if __name__ == '__main__':
     create_admin_user()  # Garantir que o admin exista
     app.run(debug=True)
+
