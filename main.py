@@ -20,6 +20,13 @@ class Usuario(db.Model, UserMixin):  # Adicionando UserMixin aqui
     senha = db.Column(db.String(150), nullable=False)
     tipo = db.Column(db.String(50), nullable=False)
 
+    from app import create_app
+
+app = create_app()
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
     # Relacionamento com a tabela Carteirinha
     carteirinhas = db.relationship('Carteirinha', backref='usuario_relacionado', lazy=True)  # Mantendo apenas essa linha
 
