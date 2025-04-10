@@ -157,6 +157,15 @@ class Carteirinha(db.Model):
                 assinatura_path = os.path.join(assinatura_dir, secure_filename(assinatura.filename))
                 assinatura.save(assinatura_path)
 
+            # app/config.py
+
+import os
+
+class Config:
+    SECRET_KEY = 'sua_chave_secreta'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///carteirinhas.db'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
             # Salvando logos
             logo_dir = os.path.join('static', 'logos')
             if not os.path.exists(logo_dir):
