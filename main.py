@@ -10,35 +10,37 @@ import qrcode
 import bcrypt
 from io import BytesIO
 
-# --- Configuração do Banco ---
+# Configuração do banco
 Base = declarative_base()
 engine = create_engine("sqlite:///banco.db")
 SessionLocal = sessionmaker(bind=engine)
 
+# Modelos
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True)
     senha_hash = Column(String)
-    
-    class Carteirinha(Base):
-        __tablename__ = "carteirinhas"
-        id = Column(Integer, primary_key=True)
-        nome = Column(String)
-        matricula = Column(String)
-        curso = Column(String)
-        cpf = Column(String)
-        data_nascimento = Column(Date)
-        dias_aula = Column(String)
-        validade = Column(String)
-        foto = Column(String)
-        assinatura_secretario = Column(String)
-        logo_prefeitura = Column(String)
-        logo_secretaria = Column(String)
-        nome_secretario = Column(String)
-        imagem_gerada = Column(String)
-        usuario_id = Column(Integer)
 
+class Carteirinha(Base):
+    __tablename__ = "carteirinhas"
+    id = Column(Integer, primary_key=True)
+    nome = Column(String)
+    matricula = Column(String)
+    curso = Column(String)
+    cpf = Column(String)
+    data_nascimento = Column(Date)
+    dias_aula = Column(String)
+    validade = Column(String)
+    foto = Column(String)
+    assinatura_secretario = Column(String)
+    logo_prefeitura = Column(String)
+    logo_secretaria = Column(String)
+    nome_secretario = Column(String)
+    imagem_gerada = Column(String)
+    usuario_id = Column(Integer)
+
+# Inicializa banco e cria admin se não existir
 def init_db():
     Base.metadata.create_all(engine)
     session = SessionLocal()
@@ -46,11 +48,13 @@ def init_db():
         senha_hash = bcrypt.hashpw("1234".encode(), bcrypt.gensalt()).decode()
         session.add(Usuario(username="admin", senha_hash=senha_hash))
         session.commit()
+    session.close()
 
-# --- Utilitários ---
+# Funções utilitárias
 def autenticar(username, senha):
     db = SessionLocal()
     user = db.query(Usuario).filter_by(username=username).first()
+    db.close()
     if user and bcrypt.checkpw(senha.encode(), user.senha_hash.encode()):
         return True
     return False
@@ -74,10 +78,10 @@ def gerar_imagem_carteirinha(c):
     db = SessionLocal()
     db.merge(c)
     db.commit()
+    db.close()
     return caminho
 
 def exportar_pdf(c):
-    caminho = f"static/carteirinhas/carteirinha_{c.id}.pdf"
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -87,6 +91,7 @@ def exportar_pdf(c):
     pdf.cell(200, 10, txt=f"CPF: {c.cpf}", ln=True)
     pdf.cell(200, 10, txt=f"Nascimento: {c.data_nascimento}", ln=True)
     pdf.cell(200, 10, txt=f"Validade: {c.validade}", ln=True)
+    caminho = f"static/carteirinhas/carteirinha_{c.id}.pdf"
     pdf.output(caminho)
     return caminho
 
@@ -100,12 +105,12 @@ def gerar_qr_code(link):
 def gerar_link_whatsapp(link):
     return f"https://api.whatsapp.com/send?text=Confira%20sua%20carteirinha:%20{link}"
 
-# --- Inicializa app ---
+# Inicializa app
 init_db()
 st.set_page_config("Carteirinhas", layout="centered")
 st.title("Sistema de Carteirinhas")
 
-# --- Login ---
+# Login
 if "logado" not in st.session_state:
     st.session_state.logado = False
 
@@ -118,13 +123,12 @@ if not st.session_state.logado:
             st.session_state.logado = True
             st.experimental_rerun()
         else:
-            st.error("Usuário ou senha inválidos.")
+            st.error("Usuário ou senha inválidos")
     st.stop()
 
-# --- Menu principal ---
+# Menu
 menu = ["Nova Carteirinha", "Listar Carteirinhas"]
 escolha = st.sidebar.selectbox("Menu", menu)
-db = SessionLocal()
 
 if escolha == "Nova Carteirinha":
     st.subheader("Cadastrar nova carteirinha")
@@ -142,8 +146,8 @@ if escolha == "Nova Carteirinha":
         logo_prefeitura = st.text_input("Logo Prefeitura")
         logo_secretaria = st.text_input("Logo Secretaria")
         usuario_id = 1
-
         if st.form_submit_button("Salvar"):
+            db = SessionLocal()
             cart = Carteirinha(
                 nome=nome, matricula=matricula, curso=curso, cpf=cpf,
                 data_nascimento=nascimento, dias_aula=dias_aula, validade=validade,
@@ -154,6 +158,7 @@ if escolha == "Nova Carteirinha":
             db.add(cart)
             db.commit()
             gerar_imagem_carteirinha(cart)
+            db.close()
             st.success("Carteirinha cadastrada!")
 
 elif escolha == "Listar Carteirinhas":
