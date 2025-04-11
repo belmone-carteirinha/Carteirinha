@@ -126,7 +126,7 @@ if not st.session_state.logado:
         st.session_state.logado = True
         st.session_state.usuario = usuario_input
         st.success("Login realizado com sucesso!")
-        st.stop()  # Impede renderização posterior antes do rerun
+        st.stop()
     else:
         st.error("Usuário ou senha inválidos")
 
