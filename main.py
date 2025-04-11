@@ -10,6 +10,26 @@ import qrcode
 import bcrypt
 from io import BytesIO
 
+# Inicialização de sessão
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+    st.session_state.usuario = None
+
+# Tela de login
+if not st.session_state.logado:
+    st.subheader("Login")
+    usuario_input = st.text_input("Usuário")
+    senha_input = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        if autenticar(usuario_input, senha_input):
+            st.session_state.logado = True
+            st.session_state.usuario = usuario_input
+            st.success("Login realizado com sucesso")
+            st.experimental_rerun()
+        else:
+            st.error("Usuário ou senha inválidos")
+    st.stop()
+
 # Configuração do banco
 Base = declarative_base()
 engine = create_engine("sqlite:///banco.db")
