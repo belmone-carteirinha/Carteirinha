@@ -20,8 +20,8 @@ class Usuario(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True)
     senha_hash = Column(String)
-
-class Carteirinha(Base):
+    
+    class Carteirinha(Base):
     __tablename__ = "carteirinhas"
     id = Column(Integer, primary_key=True)
     nome = Column(String)
