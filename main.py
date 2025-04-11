@@ -1,132 +1,178 @@
-import streamlit as st from datetime import datetime from sqlalchemy import Column, Integer, String, Date, create_engine from sqlalchemy.ext.declarative import declarative_base from sqlalchemy.orm import sessionmaker from io import BytesIO import qrcode import os from fpdf import FPDF from PIL import Image, ImageDraw, ImageFont import base64
+import streamlit as st
+from sqlalchemy import Column, Integer, String, Date, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from datetime import date
+import os
+from PIL import Image, ImageDraw, ImageFont
+from fpdf import FPDF
+import qrcode
+import bcrypt
+from io import BytesIO
 
-Configurações do banco de dados
+# Configuração do banco
+Base = declarative_base()
+engine = create_engine("sqlite:///banco.db")
+SessionLocal = sessionmaker(bind=engine)
 
-Base = declarative_base() engine = create_engine("sqlite:///banco.db") Session = sessionmaker(bind=engine)
+# Modelos
+class Usuario(Base):
+    __tablename__ = "usuarios"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True)
+    senha_hash = Column(String)
 
-def get_session(): return Session()
+class Carteirinha(Base):
+    __tablename__ = "carteirinhas"
+    id = Column(Integer, primary_key=True)
+    nome = Column(String)
+    matricula = Column(String)
+    curso = Column(String)
+    cpf = Column(String)
+    data_nascimento = Column(Date)
+    dias_aula = Column(String)
+    validade = Column(String)
+    foto = Column(String)
+    assinatura_secretario = Column(String)
+    logo_prefeitura = Column(String)
+    logo_secretaria = Column(String)
+    nome_secretario = Column(String)
+    imagem_gerada = Column(String)
+    usuario_id = Column(Integer)
 
-Modelo de dados
+# Inicializa banco e cria admin se não existir
+def init_db():
+    Base.metadata.create_all(engine)
+    session = SessionLocal()
+    if not session.query(Usuario).filter_by(username="admin").first():
+        senha_hash = bcrypt.hashpw("1234".encode(), bcrypt.gensalt()).decode()
+        session.add(Usuario(username="admin", senha_hash=senha_hash))
+        session.commit()
 
-class Carteirinha(Base): tablename = "carteirinhas" id = Column(Integer, primary_key=True) nome = Column(String) matricula = Column(String) curso = Column(String) cpf = Column(String) data_nascimento = Column(Date) dias_aula = Column(String) validade = Column(String) foto = Column(String) assinatura_secretario = Column(String) logo_prefeitura = Column(String) logo_secretaria = Column(String) imagem_gerada = Column(String) nome_secretario = Column(String)
+# Funções utilitárias
+def autenticar(username, senha):
+    db = SessionLocal()
+    user = db.query(Usuario).filter_by(username=username).first()
+    if user and bcrypt.checkpw(senha.encode(), user.senha_hash.encode()):
+        return True
+    return False
 
-def init_db(): Base.metadata.create_all(engine)
+def gerar_imagem_carteirinha(c):
+    pasta = "static/carteirinhas"
+    os.makedirs(pasta, exist_ok=True)
+    img = Image.new("RGB", (800, 500), "white")
+    draw = ImageDraw.Draw(img)
+    fonte = ImageFont.load_default()
+    draw.text((30, 30), f"Nome: {c.nome}", font=fonte, fill="black")
+    draw.text((30, 70), f"Matrícula: {c.matricula}", font=fonte, fill="black")
+    draw.text((30, 110), f"Curso: {c.curso}", font=fonte, fill="black")
+    draw.text((30, 150), f"CPF: {c.cpf}", font=fonte, fill="black")
+    draw.text((30, 190), f"Nascimento: {c.data_nascimento}", font=fonte, fill="black")
+    draw.text((30, 230), f"Dias de Aula: {c.dias_aula}", font=fonte, fill="black")
+    draw.text((30, 270), f"Validade: {c.validade}", font=fonte, fill="black")
+    caminho = os.path.join(pasta, f"carteirinha_{c.id}.png")
+    img.save(caminho)
+    c.imagem_gerada = caminho
+    db = SessionLocal()
+    db.merge(c)
+    db.commit()
+    return caminho
 
-Funções auxiliares
+def exportar_pdf(c):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"Carteirinha de {c.nome}", ln=True)
+    pdf.cell(200, 10, txt=f"Matrícula: {c.matricula}", ln=True)
+    pdf.cell(200, 10, txt=f"Curso: {c.curso}", ln=True)
+    pdf.cell(200, 10, txt=f"CPF: {c.cpf}", ln=True)
+    pdf.cell(200, 10, txt=f"Nascimento: {c.data_nascimento}", ln=True)
+    pdf.cell(200, 10, txt=f"Validade: {c.validade}", ln=True)
+    caminho = f"static/carteirinhas/carteirinha_{c.id}.pdf"
+    pdf.output(caminho)
+    return caminho
 
-def salvar_arquivo(uploaded_file, pasta="static"): if not os.path.exists(pasta): os.makedirs(pasta) caminho = os.path.join(pasta, uploaded_file.name) with open(caminho, "wb") as f: f.write(uploaded_file.getbuffer()) return caminho
+def gerar_qr_code(link):
+    qr = qrcode.make(link)
+    buf = BytesIO()
+    qr.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
 
-def gerar_qr_code(link): qr = qrcode.make(link) buffer = BytesIO() qr.save(buffer, format="PNG") buffer.seek(0) return buffer
+def gerar_link_whatsapp(link):
+    return f"https://api.whatsapp.com/send?text=Confira%20sua%20carteirinha:%20{link}"
 
-def exportar_pdf(carteirinha): pdf = FPDF() pdf.add_page() pdf.set_font("Arial", size=12) pdf.cell(200, 10, txt="Carteirinha de " + carteirinha.nome, ln=True) pdf.cell(200, 10, txt="Matrícula: " + carteirinha.matricula, ln=True) pdf.cell(200, 10, txt="Curso: " + carteirinha.curso, ln=True) pdf.cell(200, 10, txt="Data de Nascimento: " + str(carteirinha.data_nascimento), ln=True) pdf.cell(200, 10, txt="Validade: " + str(carteirinha.validade), ln=True) pdf_buffer = BytesIO() pdf.output(pdf_buffer) pdf_buffer.seek(0) return pdf_buffer
-
-def gerar_imagem_carteirinha(carteirinha): largura, altura = 1000, 600 imagem = Image.new("RGB", (largura, altura), "white") draw = ImageDraw.Draw(imagem) fonte = ImageFont.load_default()
-
-draw.text((30, 30), f"Nome: {carteirinha.nome}", font=fonte, fill="black")
-draw.text((30, 70), f"Matrícula: {carteirinha.matricula}", font=fonte, fill="black")
-draw.text((30, 110), f"Curso: {carteirinha.curso}", font=fonte, fill="black")
-draw.text((30, 150), f"CPF: {carteirinha.cpf}", font=fonte, fill="black")
-draw.text((30, 190), f"Nascimento: {carteirinha.data_nascimento}", font=fonte, fill="black")
-draw.text((30, 230), f"Dias de Aula: {carteirinha.dias_aula}", font=fonte, fill="black")
-draw.text((30, 270), f"Validade: {carteirinha.validade}", font=fonte, fill="black")
-
-if carteirinha.foto and os.path.exists(carteirinha.foto):
-    foto = Image.open(carteirinha.foto).resize((100, 120))
-    imagem.paste(foto, (800, 30))
-if carteirinha.logo_prefeitura and os.path.exists(carteirinha.logo_prefeitura):
-    logo = Image.open(carteirinha.logo_prefeitura).resize((100, 100))
-    imagem.paste(logo, (30, 350))
-if carteirinha.logo_secretaria and os.path.exists(carteirinha.logo_secretaria):
-    logo2 = Image.open(carteirinha.logo_secretaria).resize((100, 100))
-    imagem.paste(logo2, (150, 350))
-if carteirinha.assinatura_secretario and os.path.exists(carteirinha.assinatura_secretario):
-    assinatura = Image.open(carteirinha.assinatura_secretario).resize((200, 50))
-    imagem.paste(assinatura, (700, 500))
-
-caminho = f"static/carteirinhas/carteirinha_{carteirinha.id}.png"
-os.makedirs("static/carteirinhas", exist_ok=True)
-imagem.save(caminho)
-return caminho
-
-Inicia banco
-
+# Inicializa app
 init_db()
+st.set_page_config("Carteirinhas", layout="centered")
+st.title("Sistema de Carteirinhas")
 
-Interface Streamlit
+# Login
+if "logado" not in st.session_state:
+    st.session_state.logado = False
 
-st.set_page_config("Carteirinhas Estudantis", layout="wide") st.title("Sistema de Carteirinhas")
+if not st.session_state.logado:
+    st.subheader("Login")
+    usuario = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        if autenticar(usuario, senha):
+            st.session_state.logado = True
+            st.experimental_rerun()
+        else:
+            st.error("Login inválido")
+    st.stop()
 
-Menu lateral
+# Menu principal
+menu = ["Nova Carteirinha", "Listar Carteirinhas"]
+escolha = st.sidebar.selectbox("Menu", menu)
+db = SessionLocal()
 
-menu = st.sidebar.radio("Menu", ["Início", "Nova Carteirinha", "Gerenciar Carteirinhas"])
+if escolha == "Nova Carteirinha":
+    st.subheader("Cadastrar nova carteirinha")
+    with st.form("form_carteirinha"):
+        nome = st.text_input("Nome")
+        matricula = st.text_input("Matrícula")
+        curso = st.text_input("Curso")
+        cpf = st.text_input("CPF")
+        nascimento = st.date_input("Nascimento", value=date(2000,1,1))
+        dias_aula = st.text_input("Dias de Aula")
+        validade = st.text_input("Validade")
+        nome_secretario = st.text_input("Nome do Secretário")
+        foto = st.text_input("Caminho da Foto")
+        assinatura = st.text_input("Assinatura do Secretário")
+        logo_prefeitura = st.text_input("Logo Prefeitura")
+        logo_secretaria = st.text_input("Logo Secretaria")
+        usuario_id = 1
+        if st.form_submit_button("Salvar"):
+            cart = Carteirinha(
+                nome=nome, matricula=matricula, curso=curso, cpf=cpf,
+                data_nascimento=nascimento, dias_aula=dias_aula, validade=validade,
+                nome_secretario=nome_secretario, foto=foto, assinatura_secretario=assinatura,
+                logo_prefeitura=logo_prefeitura, logo_secretaria=logo_secretaria,
+                usuario_id=usuario_id
+            )
+            db.add(cart)
+            db.commit()
+            gerar_imagem_carteirinha(cart)
+            st.success("Carteirinha cadastrada!")
 
-Página Inicial
-
-if menu == "Início": st.subheader("Bem-vindo!") st.write("Use o menu à esquerda para navegar.")
-
-Criar carteirinha
-
-elif menu == "Nova Carteirinha": st.subheader("Criar Nova Carteirinha") with st.form("form_carteirinha"): nome = st.text_input("Nome do Aluno") matricula = st.text_input("Matrícula") curso = st.text_input("Curso") cpf = st.text_input("CPF") data_nascimento = st.date_input("Data de Nascimento") dias_aula = st.text_input("Dias de Aula") validade = st.text_input("Validade")
-
-foto = st.file_uploader("Foto do Aluno", type=["png", "jpg", "jpeg"])
-    assinatura = st.file_uploader("Assinatura do Secretário", type=["png"])
-    logo_prefeitura = st.file_uploader("Logo da Prefeitura", type=["png"])
-    logo_secretaria = st.file_uploader("Logo da Secretaria", type=["png"])
-    nome_secretario = st.text_input("Nome do Secretário")
-
-    enviado = st.form_submit_button("Salvar")
-
-if enviado:
-    session = get_session()
-    nova = Carteirinha(
-        nome=nome,
-        matricula=matricula,
-        curso=curso,
-        cpf=cpf,
-        data_nascimento=data_nascimento,
-        dias_aula=dias_aula,
-        validade=validade,
-        foto=salvar_arquivo(foto) if foto else "",
-        assinatura_secretario=salvar_arquivo(assinatura) if assinatura else "",
-        logo_prefeitura=salvar_arquivo(logo_prefeitura) if logo_prefeitura else "",
-        logo_secretaria=salvar_arquivo(logo_secretaria) if logo_secretaria else "",
-        nome_secretario=nome_secretario,
-        imagem_gerada="",
-    )
-    session.add(nova)
-    session.commit()
-    st.success("Carteirinha criada com sucesso!")
-
-Listar/gerenciar carteirinhas
-
-elif menu == "Gerenciar Carteirinhas": st.subheader("Carteirinhas Cadastradas") session = get_session() carteirinhas = session.query(Carteirinha).all()
-
-for c in carteirinhas:
-    with st.expander(f"{c.nome} - {c.matricula}"):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.write(f"**Curso:** {c.curso}")
-            st.write(f"**Nascimento:** {c.data_nascimento}")
-            st.write(f"**Validade:** {c.validade}")
-            st.write(f"**Dias de Aula:** {c.dias_aula}")
-            st.write(f"**Secretário:** {c.nome_secretario}")
-        with col2:
-            if c.foto and os.path.exists(c.foto):
-                st.image(c.foto, width=100)
-
-        st.markdown("---")
-        col3, col4, col5 = st.columns(3)
-        with col3:
-            st.download_button("Baixar PDF", exportar_pdf(c), file_name=f"carteirinha_{c.id}.pdf")
-        with col4:
-            link_carteirinha = f"http://localhost:8501/?id={c.id}"
-            qr = gerar_qr_code(link_carteirinha)
-            st.download_button("QR Code", qr, file_name="qr.png")
-        with col5:
-            whatsapp_link = f"https://api.whatsapp.com/send?text=Confira%20sua%20carteirinha:%20{link_carteirinha}"
-            st.markdown(f"[Enviar por WhatsApp]({whatsapp_link})")
-
-        if st.button(f"Gerar imagem da carteirinha", key=f"img_{c.id}"):
-            caminho_img = gerar_imagem_carteirinha(c)
-            if os.path.exists(caminho_img):
-                st.image(caminho_img, caption="Imagem da Carteirinha", use_column_width=True)
+elif escolha == "Listar Carteirinhas":
+    st.subheader("Carteirinhas Cadastradas")
+    for c in db.query(Carteirinha).all():
+        with st.expander(f"{c.nome} - {c.matricula}"):
+            if c.imagem_gerada and os.path.exists(c.imagem_gerada):
+                st.image(c.imagem_gerada, width=300)
+            st.markdown(f"**Curso:** {c.curso}")
+            st.markdown(f"**Validade:** {c.validade}")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button(f"Exportar PDF {c.id}"):
+                    path = exportar_pdf(c)
+                    with open(path, "rb") as f:
+                        st.download_button("Baixar PDF", f, file_name=f"carteirinha_{c.id}.pdf")
+            with col2:
+                qr = gerar_qr_code(f"http://meusite.com/carteirinha/{c.id}")
+                st.image(qr, width=100)
+                link = gerar_link_whatsapp(f"http://meusite.com/carteirinha/{c.id}")
+                st.markdown(f"[Enviar por WhatsApp]({link})")
