@@ -1,21 +1,26 @@
-import streamlit as st
+import os
 from sqlalchemy import Column, Integer, String, Date, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from datetime import date
-import os
-from PIL import Image, ImageDraw, ImageFont
-from fpdf import FPDF
-import qrcode
+import streamlit as st
 import bcrypt
-from io import BytesIO
 
-# Configuração do banco
+# Configurações iniciais
 Base = declarative_base()
 engine = create_engine("sqlite:///banco.db")
 SessionLocal = sessionmaker(bind=engine)
 
-# Modelos
+# Criação do banco e usuário admin
+def init_db():
+    Base.metadata.create_all(engine)
+    session = SessionLocal()
+    if not session.query(Usuario).filter_by(username="admin").first():
+        senha_hash = bcrypt.hashpw("1234".encode(), bcrypt.gensalt()).decode()
+        session.add(Usuario(username="admin", senha_hash=senha_hash))
+        session.commit()
+    session.close()
+
+# Modelos de dados
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
@@ -33,12 +38,14 @@ class Carteirinha(Base):
     dias_aula = Column(String)
     validade = Column(String)
     foto = Column(String)
-    assinatura_secretario = Column(String)
-    logo_prefeitura = Column(String)
-    logo_secretaria = Column(String)
-    nome_secretario = Column(String)
     imagem_gerada = Column(String)
     usuario_id = Column(Integer)
+
+# Cria pastas necessárias
+os.makedirs("static/carteirinhas", exist_ok=True)
+
+# Chama inicialização
+init_db()
 
 # Inicializa banco e cria admin se não existir
 def init_db():
