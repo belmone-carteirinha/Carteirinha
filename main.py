@@ -10,15 +10,21 @@ Base = declarative_base()
 engine = create_engine("sqlite:///banco.db")
 SessionLocal = sessionmaker(bind=engine)
 
-# Criação do banco e usuário admin
-def init_db():
-    Base.metadata.create_all(engine)
-    session = SessionLocal()
-    if not session.query(Usuario).filter_by(username="admin").first():
-        senha_hash = bcrypt.hashpw("1234".encode(), bcrypt.gensalt()).decode()
-        session.add(Usuario(username="admin", senha_hash=senha_hash))
-        session.commit()
-    session.close()
+# Inicializa sessão
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+
+if not st.session_state.logado:
+    st.subheader("Login")
+    usuario_input = st.text_input("Usuário")
+    senha_input = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        if autenticar(usuario_input, senha_input):
+            st.session_state.logado = True
+            st.experimental_rerun()
+        else:
+            st.error("Usuário ou senha inválidos")
+    st.stop()
 
 # Modelos de dados
 class Usuario(Base):
