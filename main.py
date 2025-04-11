@@ -117,18 +117,23 @@ if "usuario" not in st.session_state:
     st.session_state.usuario = None
 
 # Login
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+
 if not st.session_state.logado:
     st.subheader("Login")
     usuario_input = st.text_input("Usuário")
     senha_input = st.text_input("Senha", type="password")
+
     if st.button("Entrar"):
-    if autenticar(usuario_input, senha_input):
-        st.session_state.logado = True
-        st.session_state.usuario = usuario_input
-        st.success("Login realizado com sucesso!")
-        st.stop()
-    else:
-        st.error("Usuário ou senha inválidos")
+        if autenticar(usuario_input, senha_input):
+            st.session_state.logado = True
+            st.session_state.usuario = usuario_input
+            st.success("Login realizado com sucesso!")
+            st.experimental_rerun()
+        else:
+            st.error("Usuário ou senha inválidos")
+    st.stop()
 
 # Menu
 menu = ["Nova Carteirinha", "Listar Carteirinhas"]
