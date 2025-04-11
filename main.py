@@ -1,19 +1,21 @@
 import streamlit as st
-from sqlalchemy import create_engine, Column, Integer, String, Date
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, Integer, String, Date, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 from datetime import date
 import os
 from PIL import Image, ImageDraw, ImageFont
 from fpdf import FPDF
 import qrcode
-from io import BytesIO
 import bcrypt
+from io import BytesIO
 
-# Banco de dados
+# Configurações iniciais do banco
 Base = declarative_base()
 engine = create_engine("sqlite:///banco.db")
 SessionLocal = sessionmaker(bind=engine)
 
+# Modelos
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
@@ -38,7 +40,7 @@ class Carteirinha(Base):
     imagem_gerada = Column(String)
     usuario_id = Column(Integer)
 
-# Inicializa banco
+# Inicializar banco e criar admin
 def init_db():
     Base.metadata.create_all(engine)
     db = SessionLocal()
@@ -46,16 +48,18 @@ def init_db():
         senha_hash = bcrypt.hashpw("1234".encode(), bcrypt.gensalt()).decode()
         db.add(Usuario(username="admin", senha_hash=senha_hash))
         db.commit()
+    db.close()
 
-# Função de login
+# Função de autenticação
 def autenticar(username, senha):
     db = SessionLocal()
     user = db.query(Usuario).filter_by(username=username).first()
+    db.close()
     if user and bcrypt.checkpw(senha.encode(), user.senha_hash.encode()):
         return True
     return False
 
-# Gerar imagem carteirinha
+# Geração da imagem da carteirinha
 def gerar_imagem_carteirinha(c):
     pasta = "static/carteirinhas"
     os.makedirs(pasta, exist_ok=True)
@@ -71,13 +75,14 @@ def gerar_imagem_carteirinha(c):
     draw.text((30, 270), f"Validade: {c.validade}", font=fonte, fill="black")
     caminho = os.path.join(pasta, f"carteirinha_{c.id}.png")
     img.save(caminho)
-    c.imagem_gerada = caminho
     db = SessionLocal()
+    c.imagem_gerada = caminho
     db.merge(c)
     db.commit()
+    db.close()
     return caminho
 
-# PDF
+# Exportar PDF
 def exportar_pdf(c):
     pdf = FPDF()
     pdf.add_page()
@@ -92,7 +97,7 @@ def exportar_pdf(c):
     pdf.output(caminho)
     return caminho
 
-# QR Code
+# Gerar QR Code
 def gerar_qr_code(link):
     qr = qrcode.make(link)
     buf = BytesIO()
@@ -100,17 +105,22 @@ def gerar_qr_code(link):
     buf.seek(0)
     return buf
 
+# Link WhatsApp
 def gerar_link_whatsapp(link):
     return f"https://api.whatsapp.com/send?text=Confira%20sua%20carteirinha:%20{link}"
 
-# === App ===
+# Inicialização
 init_db()
-st.set_page_config("Carteirinhas", layout="centered")
+st.set_page_config(page_title="Carteirinhas", layout="centered")
 st.title("Sistema de Carteirinhas")
 
+# Sessão
 if "logado" not in st.session_state:
     st.session_state.logado = False
+if "usuario" not in st.session_state:
+    st.session_state.usuario = None
 
+# Login
 if not st.session_state.logado:
     st.subheader("Login")
     usuario_input = st.text_input("Usuário")
@@ -118,11 +128,13 @@ if not st.session_state.logado:
     if st.button("Entrar"):
         if autenticar(usuario_input, senha_input):
             st.session_state.logado = True
+            st.session_state.usuario = usuario_input
             st.experimental_rerun()
         else:
-            st.error("Login inválido")
+            st.error("Usuário ou senha inválidos")
     st.stop()
 
+# Menu
 menu = ["Nova Carteirinha", "Listar Carteirinhas"]
 escolha = st.sidebar.selectbox("Menu", menu)
 db = SessionLocal()
@@ -154,7 +166,7 @@ if escolha == "Nova Carteirinha":
             db.add(cart)
             db.commit()
             gerar_imagem_carteirinha(cart)
-            st.success("Carteirinha cadastrada!")
+            st.success("Carteirinha cadastrada com sucesso!")
 
 elif escolha == "Listar Carteirinhas":
     st.subheader("Carteirinhas Cadastradas")
@@ -176,3 +188,5 @@ elif escolha == "Listar Carteirinhas":
                 st.image(qr, width=100)
                 link = gerar_link_whatsapp(f"http://meusite.com/carteirinha/{c.id}")
                 st.markdown(f"[Enviar por WhatsApp]({link})")
+
+db.close()
