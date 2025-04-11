@@ -1,5 +1,6 @@
 streamlit
-fpdf
-Pillow
-qrcode
 sqlalchemy
+pillow
+fpdf
+qrcode
+bcrypt
