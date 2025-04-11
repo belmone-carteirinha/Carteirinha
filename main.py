@@ -10,32 +10,11 @@ import qrcode
 import bcrypt
 from io import BytesIO
 
-# Inicialização de sessão
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-    st.session_state.usuario = None
-
-# Tela de login
-if not st.session_state.logado:
-    st.subheader("Login")
-    usuario_input = st.text_input("Usuário")
-    senha_input = st.text_input("Senha", type="password")
-    if st.button("Entrar"):
-        if autenticar(usuario_input, senha_input):
-            st.session_state.logado = True
-            st.session_state.usuario = usuario_input
-            st.success("Login realizado com sucesso")
-            st.experimental_rerun()
-        else:
-            st.error("Usuário ou senha inválidos")
-    st.stop()
-
-# Configuração do banco
+# --- Configuração do Banco ---
 Base = declarative_base()
 engine = create_engine("sqlite:///banco.db")
 SessionLocal = sessionmaker(bind=engine)
 
-# Modelos
 class Usuario(Base):
     __tablename__ = "usuarios"
     id = Column(Integer, primary_key=True)
@@ -60,7 +39,6 @@ class Carteirinha(Base):
     imagem_gerada = Column(String)
     usuario_id = Column(Integer)
 
-# Inicializa banco e cria admin se não existir
 def init_db():
     Base.metadata.create_all(engine)
     session = SessionLocal()
@@ -69,7 +47,7 @@ def init_db():
         session.add(Usuario(username="admin", senha_hash=senha_hash))
         session.commit()
 
-# Funções utilitárias
+# --- Utilitários ---
 def autenticar(username, senha):
     db = SessionLocal()
     user = db.query(Usuario).filter_by(username=username).first()
@@ -99,6 +77,7 @@ def gerar_imagem_carteirinha(c):
     return caminho
 
 def exportar_pdf(c):
+    caminho = f"static/carteirinhas/carteirinha_{c.id}.pdf"
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
@@ -108,7 +87,6 @@ def exportar_pdf(c):
     pdf.cell(200, 10, txt=f"CPF: {c.cpf}", ln=True)
     pdf.cell(200, 10, txt=f"Nascimento: {c.data_nascimento}", ln=True)
     pdf.cell(200, 10, txt=f"Validade: {c.validade}", ln=True)
-    caminho = f"static/carteirinhas/carteirinha_{c.id}.pdf"
     pdf.output(caminho)
     return caminho
 
@@ -122,28 +100,28 @@ def gerar_qr_code(link):
 def gerar_link_whatsapp(link):
     return f"https://api.whatsapp.com/send?text=Confira%20sua%20carteirinha:%20{link}"
 
-# Inicializa app
+# --- Inicializa app ---
 init_db()
 st.set_page_config("Carteirinhas", layout="centered")
 st.title("Sistema de Carteirinhas")
 
-# Login
+# --- Login ---
 if "logado" not in st.session_state:
     st.session_state.logado = False
 
 if not st.session_state.logado:
     st.subheader("Login")
-    usuario = st.text_input("Usuário")
-    senha = st.text_input("Senha", type="password")
+    usuario_input = st.text_input("Usuário")
+    senha_input = st.text_input("Senha", type="password")
     if st.button("Entrar"):
-        if autenticar(usuario, senha):
+        if autenticar(usuario_input, senha_input):
             st.session_state.logado = True
             st.experimental_rerun()
         else:
-            st.error("Login inválido")
+            st.error("Usuário ou senha inválidos.")
     st.stop()
 
-# Menu principal
+# --- Menu principal ---
 menu = ["Nova Carteirinha", "Listar Carteirinhas"]
 escolha = st.sidebar.selectbox("Menu", menu)
 db = SessionLocal()
@@ -164,6 +142,7 @@ if escolha == "Nova Carteirinha":
         logo_prefeitura = st.text_input("Logo Prefeitura")
         logo_secretaria = st.text_input("Logo Secretaria")
         usuario_id = 1
+
         if st.form_submit_button("Salvar"):
             cart = Carteirinha(
                 nome=nome, matricula=matricula, curso=curso, cpf=cpf,
