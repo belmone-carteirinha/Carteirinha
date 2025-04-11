@@ -158,7 +158,10 @@ if escolha == "Nova Carteirinha":
 
 elif escolha == "Listar Carteirinhas":
     st.subheader("Carteirinhas Cadastradas")
-    for c in db.query(Carteirinha).all():
+    with SessionLocal() as db:
+        carteirinhas = db.query(Carteirinha).all()
+
+    for c in carteirinhas:
         with st.expander(f"{c.nome} - {c.matricula}"):
             if c.imagem_gerada and os.path.exists(c.imagem_gerada):
                 st.image(c.imagem_gerada, width=300)
