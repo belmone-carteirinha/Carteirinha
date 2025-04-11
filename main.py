@@ -33,10 +33,6 @@ class Carteirinha(Base):
     dias_aula = Column(String)
     validade = Column(String)
     foto = Column(String)
-    assinatura_secretario = Column(String)
-    logo_prefeitura = Column(String)
-    logo_secretaria = Column(String)
-    nome_secretario = Column(String)
     imagem_gerada = Column(String)
     usuario_id = Column(Integer)
 
@@ -149,11 +145,6 @@ if escolha == "Nova Carteirinha":
         nascimento = st.date_input("Nascimento", value=date(2000,1,1))
         dias_aula = st.text_input("Dias de Aula")
         validade = st.text_input("Validade")
-        nome_secretario = st.text_input("Nome do Secretário")
-        foto = st.text_input("Caminho da Foto")
-        assinatura = st.text_input("Assinatura do Secretário")
-        logo_prefeitura = st.text_input("Logo Prefeitura")
-        logo_secretaria = st.text_input("Logo Secretaria")
         usuario_id = 1
         if st.form_submit_button("Salvar"):
             cart = Carteirinha(
