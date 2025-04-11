@@ -22,22 +22,22 @@ class Usuario(Base):
     senha_hash = Column(String)
     
     class Carteirinha(Base):
-    __tablename__ = "carteirinhas"
-    id = Column(Integer, primary_key=True)
-    nome = Column(String)
-    matricula = Column(String)
-    curso = Column(String)
-    cpf = Column(String)
-    data_nascimento = Column(Date)
-    dias_aula = Column(String)
-    validade = Column(String)
-    foto = Column(String)
-    assinatura_secretario = Column(String)
-    logo_prefeitura = Column(String)
-    logo_secretaria = Column(String)
-    nome_secretario = Column(String)
-    imagem_gerada = Column(String)
-    usuario_id = Column(Integer)
+        __tablename__ = "carteirinhas"
+        id = Column(Integer, primary_key=True)
+        nome = Column(String)
+        matricula = Column(String)
+        curso = Column(String)
+        cpf = Column(String)
+        data_nascimento = Column(Date)
+        dias_aula = Column(String)
+        validade = Column(String)
+        foto = Column(String)
+        assinatura_secretario = Column(String)
+        logo_prefeitura = Column(String)
+        logo_secretaria = Column(String)
+        nome_secretario = Column(String)
+        imagem_gerada = Column(String)
+        usuario_id = Column(Integer)
 
 def init_db():
     Base.metadata.create_all(engine)
